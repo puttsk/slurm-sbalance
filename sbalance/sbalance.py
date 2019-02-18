@@ -12,7 +12,7 @@ import csv
 
 from collections import OrderedDict
 
-__version__ = '0.1b'
+__version__ = '0.1a4'
 __author__ = 'Putt Sakdhnagool <putt.sakdhnagool@nectec.or.th>'
 __license__ = 'MIT'
 
@@ -217,6 +217,3 @@ def main():
     user_usage = query_usage(qos_list)
 
     print_user_balance(user, user_account, user_usage, args.unit)
-
-if __name__ == "__main__":
-    main()
