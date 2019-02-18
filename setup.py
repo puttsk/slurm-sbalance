@@ -14,7 +14,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='slurm-sbalance',
-    version='0.1a4',  
+    version='0.1a5',  
     description='Slurm utility for checking account balance',  
     long_description=long_description, 
     long_description_content_type='text/markdown', 

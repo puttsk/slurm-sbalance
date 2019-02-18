@@ -12,7 +12,7 @@ import csv
 
 from collections import OrderedDict
 
-__version__ = '0.1a4'
+__version__ = '0.1a5'
 __author__ = 'Putt Sakdhnagool <putt.sakdhnagool@nectec.or.th>'
 __license__ = 'MIT'
 
