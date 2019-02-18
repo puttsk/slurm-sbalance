@@ -179,7 +179,7 @@ def print_user_balance(user, user_account, user_usage, units=''):
             print("\tAllocation:\t\t%12s" % 'unlimited')
 
 def parse_args():
-    slurm_version = subprocess.check_output(['sshare', '--version'])
+    slurm_version = str(subprocess.check_output(['sshare', '--version']))
 
     parser = argparse.ArgumentParser(prog='sbalance', description='Query slurm account balance.')
     version = "sbalance v." + __version__ + " with " + slurm_version
