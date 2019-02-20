@@ -5,6 +5,7 @@ from os import path
 # and accepts an argument to specify the text encoding
 # Python 3 only projects can skip this import
 from io import open
+import sbalance
 
 here = path.abspath(path.dirname(__file__))
 
@@ -14,7 +15,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='slurm-sbalance',
-    version='0.1.5a1',  
+    version=sbalance.__version__,  
     description='Slurm utility for checking account balance',  
     long_description=long_description, 
     long_description_content_type='text/markdown', 
