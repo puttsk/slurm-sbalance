@@ -1,7 +1,7 @@
 .DEFAULT: build
 
 .PHONY: build
-build:
+build: setup.py sbalance/sbalance.py
 	python setup.py sdist bdist_wheel
 
 .PHONY: dist

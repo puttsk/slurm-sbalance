@@ -12,9 +12,7 @@ import csv
 
 from collections import OrderedDict
 
-__version__ = '0.1a5'
-__author__ = 'Putt Sakdhnagool <putt.sakdhnagool@nectec.or.th>'
-__license__ = 'MIT'
+from .config import __version__, __author__, __license__
 
 Verbosity = type('Verbosity', (), {'INFO':1, 'WARNING':2, 'DEBUG':5})
 
@@ -172,17 +170,18 @@ def print_user_balance(user, user_account, user_usage, units=''):
             balance = limits - usage
             balance_percent = balance * 100.0 / limits
 
-            print("\tAllocation:\t\t%12.2f %s" % (limits, su_units))
-            print("\tRemaining Balance:\t%12.2f %s (%0.2f%%)" % (balance, su_units, balance_percent))
-            print("\tUsage:\t\t\t%12.2f %s" % (usage, su_units))
+            print("\t{:20} {:15.2f} {}".format("Allocation:", limits, su_units))
+            print("\t{:20} {:15.2f} {} ({:6.2f}%)".format("Remaining Balance:", balance, su_units, balance_percent))
+            print("\t{:20} {:15.2f} {}".format("Used:", usage, su_units))
         else:
-            print("\tAllocation:\t\t%12s" % 'unlimited')
+            print("\t{:20} {:>18}".format("Allocation:", "unlimited"))
 
 def parse_args():
     slurm_version = str(subprocess.check_output(['sshare', '--version']))
 
     parser = argparse.ArgumentParser(prog='sbalance', description='Query slurm account balance.')
     version = "sbalance v." + __version__ + " with " + slurm_version
+    #version = "sbalance v." + "__version__" + " with " + slurm_version
     parser.add_argument(
         '-V', '--version', action='version', version=version)
     parser.add_argument(
@@ -205,7 +204,6 @@ def main():
         verbose_print = lambda *a, **k: None
 
     global __verbose_print
-    #__verbose_print = lambda *a, **k: print(a, k) if args.verbose else lambda *a, **k: None
     __verbose_print = verbose_print
 
     __verbose_print(args, level=Verbosity.DEBUG)
