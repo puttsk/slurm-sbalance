@@ -180,8 +180,7 @@ def parse_args():
     slurm_version = str(subprocess.check_output(['sshare', '--version']))
 
     parser = argparse.ArgumentParser(prog='sbalance', description='Query slurm account balance.')
-    version = "sbalance v." + __version__ + " with " + slurm_version
-    #version = "sbalance v." + "__version__" + " with " + slurm_version
+    version = "sbalance " + __version__ + " with " + slurm_version
     parser.add_argument(
         '-V', '--version', action='version', version=version)
     parser.add_argument(
