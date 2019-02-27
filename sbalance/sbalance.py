@@ -27,7 +27,7 @@ SACCT_USAGE_STATES = ('CD',     # COMPLETED
 )
 
 SACCTMGR_COMMAND = 'sacctmgr'
-SACCTMGR_QOS_FIELDS = ('name','grptresmins','flags')
+SACCTMGR_QOS_FIELDS = ('name','grptresmins','flags','description')
 SACCTMGR_QOS_NODECAY_FLAG = 'NoDecay'
 SACCTMGR_ASSOC_FIELDS = ('account','user','qos', 'defaultqos')
 
@@ -49,23 +49,24 @@ def query_qos():
     for qos in qos_output:
         # Check only QoS with NoDecay flags
         if SACCTMGR_QOS_NODECAY_FLAG in qos['flags'].split(','):
-            qos_info[qos['name']] = {k:int(v) for k,v in (x.split('=') for x in qos['grptresmins'].strip().split(','))}
+            qos_info[qos['name']] = qos
+            qos_info[qos['name']]['grptresmins'] = {k:int(v) for k,v in (x.split('=') for x in qos['grptresmins'].strip().split(','))}
 
     __verbose_print(qos_info, level=Verbosity.DEBUG)
 
     return qos_info
 
-def query_accounts(qos_info, user_list=None, verbose=0):
-    account_info = OrderedDict()
-    account_cmd = [SACCTMGR_COMMAND,
+def query_assocs(qos_info, user_list=None, verbose=0):
+    assoc_info = OrderedDict()
+    assoc_cmd = [SACCTMGR_COMMAND,
                    '--noheader', 'show', 'assoc','-P',
                    'format=' + ','.join(SACCTMGR_ASSOC_FIELDS)
     ]
 
-    __verbose_print('[SLURM]: ' +' '.join(account_cmd), level=Verbosity.INFO)
+    __verbose_print('[SLURM]: ' +' '.join(assoc_cmd), level=Verbosity.INFO)
 
     # Assume user only have one QoS
-    assoc_output_raw = subprocess.check_output(account_cmd, universal_newlines=True).splitlines()
+    assoc_output_raw = subprocess.check_output(assoc_cmd, universal_newlines=True).splitlines()
     assoc_output = csv.DictReader(assoc_output_raw, fieldnames=SACCTMGR_ASSOC_FIELDS, delimiter='|')
     
     for assoc in assoc_output:
@@ -77,19 +78,19 @@ def query_accounts(qos_info, user_list=None, verbose=0):
 
             for qos in qos_list:
                 if qos in qos_info:
-                    account_info[(assoc['account'], qos)] = qos_info[qos]
+                    assoc_info[(assoc['account'], qos)] = qos_info[qos]
                 else:
-                    account_info[(assoc['account'], qos)] = {}
+                    assoc_info[(assoc['account'], qos)] = {}
                 
                 # Has default QoS
                 if len(qos_list) > 1:
-                    account_info[(assoc['account'], qos)]['default'] = (qos == assoc['defaultqos'])
+                    assoc_info[(assoc['account'], qos)]['default'] = (qos == assoc['defaultqos'])
                 else:
-                    account_info[(assoc['account'], qos)]['default'] = None
+                    assoc_info[(assoc['account'], qos)]['default'] = None
 
-    __verbose_print(account_info, level=Verbosity.DEBUG)
+    __verbose_print(assoc_info, level=Verbosity.DEBUG)
 
-    return account_info
+    return assoc_info
 
 def query_usage(qos_list=None, verbose=0):
     usage_info = {}
@@ -155,12 +156,12 @@ def print_user_balance(user, user_account, user_usage, units=''):
         qos = assoc[1]
 
         if user_account[assoc]['default'] == None or user_account[assoc]['default']:
-            print(account + ":")
+            print(account + ": " )
         else:
-            print(account + ":" + qos + ":")
+            print(account + ":" + qos + ": " )
 
-        if user_account[assoc].get('billing', None):
-            limits = user_account[assoc]['billing'] / su_factor
+        if user_account[assoc].get('grptresmins', None):
+            limits = user_account[assoc]['grptresmins']['billing'] / su_factor
             
             if user_usage.get(assoc, None):
                 usage = user_usage[assoc]['billing'] / su_factor
@@ -170,6 +171,8 @@ def print_user_balance(user, user_account, user_usage, units=''):
             balance = limits - usage
             balance_percent = balance * 100.0 / limits
 
+            if user_account[assoc].get('description', None):
+                print("\t{:20} {:>18s}".format("Description:", user_account[assoc]['description']))    
             print("\t{:20} {:15.2f} {}".format("Allocation:", limits, su_units))
             print("\t{:20} {:15.2f} {} ({:6.2f}%)".format("Remaining Balance:", balance, su_units, balance_percent))
             print("\t{:20} {:15.2f} {}".format("Used:", usage, su_units))
@@ -210,7 +213,7 @@ def main():
     user = getpass.getuser()
     
     qos_list = query_qos()
-    user_account = query_accounts(qos_list)
+    user_assocs = query_assocs(qos_list)
     user_usage = query_usage(qos_list)
 
-    print_user_balance(user, user_account, user_usage, args.unit)
+    print_user_balance(user, user_assocs, user_usage, args.unit)
