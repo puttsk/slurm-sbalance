@@ -10,6 +10,7 @@ import argparse
 import math
 import csv
 
+from pprint import pprint
 from collections import OrderedDict
 
 from .config import __version__, __author__, __license__
@@ -23,7 +24,8 @@ SACCT_BEGIN_DATE = '01/01/19'
 SACCT_USAGE_FIELDS = ('jobid', 'user', 'account','qos','state','alloctres','elapsedraw','partition')
 SACCT_USAGE_STATES = ('CD',     # COMPLETED
                       'F',      # FAILED
-                      'TO'      # TIMEOUT
+                      'TO',      # TIMEOUT
+                      'CA'
 )
 
 SACCTMGR_COMMAND = 'sacctmgr'
@@ -92,17 +94,17 @@ def query_assocs(qos_info, user_list=None, verbose=0):
 
     return assoc_info
 
-def query_usage(qos_list=None, verbose=0):
+def query_usage(assoc_list=None, verbose=0):
     usage_info = {}
     usage_cmd = [SACCT_COMMAND,
                  '-aPX', '--noheader', '--noconvert',
                  '--format=' + ','.join(SACCT_USAGE_FIELDS),
-                 '--state=' + ','.join(SACCT_USAGE_STATES),    # Looking for completed, failed, and timed out jobs.
+                 #'--state=' + ','.join(SACCT_USAGE_STATES),    # Looking for completed, failed, and timed out jobs.
                  '--start=' + SACCT_BEGIN_DATE                 # Start from the begining of service 
     ]
-    if qos_list:
+    if assoc_list:
         usage_cmd.append('-q')
-        usage_cmd.append(','.join(qos_list.keys()))
+        usage_cmd.append(','.join([x[1] for x in assoc_list.keys()]))
 
     
     __verbose_print('[SLURM]: ' +' '.join(usage_cmd), level=Verbosity.INFO)
@@ -125,18 +127,68 @@ def query_usage(qos_list=None, verbose=0):
         if usage_info.get(account_qos, None):
             for tres in alloc_tres:
                 if usage_info[account_qos].get(tres, None):
-                    usage_info[account_qos][tres] += math.ceil(alloc_tres[tres] * elapsed_mins)
+                    usage_info[account_qos][tres] += alloc_tres[tres] * elapsed_mins
                 else:
-                    usage_info[account_qos][tres] = math.ceil(alloc_tres[tres] * elapsed_mins)
+                    usage_info[account_qos][tres] = alloc_tres[tres] * elapsed_mins
             usage_info[account_qos]['elaspsed_mins'] += elapsed_mins
         else:
-            usage_info[account_qos] = alloc_tres
+            usage_info[account_qos] = {}
+            for tres in alloc_tres:
+                usage_info[account_qos][tres] = alloc_tres[tres] * elapsed_mins
             usage_info[account_qos]['elaspsed_mins'] = elapsed_mins
 
     
     __verbose_print(usage_info, level=Verbosity.DEBUG)
 
     return usage_info
+
+def print_user_balance_table(user, user_account, user_usage, units='', col_width=15):
+    if units == 'k':
+        su_units = 'kSU'
+        su_factor = 1.0e3
+    elif units == 'm':
+        su_units = 'MSU'
+        su_factor = 1.0e6
+    else:
+        su_units = 'SU'
+        su_factor = 1
+
+    table_format = "{:<{col_width}s} {:<{col_width}s} {:{col_width}s} {:>{col_width}s} {:>{col_width}s} {:>{col_width}s} {:>{col_width}s}".replace('{col_width}', str(col_width))
+
+    print("Account balances for user: %s" % user)
+    print()
+    print(table_format.format('Account', 'QoS', 'Description', 'Allocation({})'.format(su_units), 'Remaining({})'.format(su_units), 'Remaining(%)', 'Used({})'.format(su_units), col_width=col_width)) 
+    print(('-'*col_width + ' ') * 7 )
+    
+    for assoc in user_account:
+        account = assoc[0]
+        qos = assoc[1]
+
+        balance = None
+        limits = None
+        usage = None    
+
+        if user_account[assoc].get('grptresmins', None):
+            limits = user_account[assoc]['grptresmins']['billing'] / su_factor
+            
+            if user_usage.get(assoc, None):
+                usage = math.ceil(user_usage[assoc]['billing']) / su_factor
+            else:
+                usage = 0
+            
+            balance = limits - usage
+            balance_percent = balance * 100.0 / limits
+
+        
+        print(table_format.format(account,
+                                  qos, 
+                                  user_account[assoc].get('description', ''), 
+                                  "{:{col_width}.2f}".format(limits, col_width=col_width) if limits != None else 'unlimited', 
+                                  "{:{col_width}.2f}".format(balance, col_width=col_width) if balance != None else '', 
+                                  "{:{col_width}.2f}".format(balance_percent, col_width=col_width) if balance != None else '', 
+                                  "{:{col_width}.2f}".format(usage, col_width=col_width) if usage != None else '', 
+                                  ))
+    print()
 
 def print_user_balance(user, user_account, user_usage, units=''):
     if units == 'k':
@@ -189,7 +241,9 @@ def parse_args():
     parser.add_argument(
         '-k', action='store_const', dest='unit', const='k', help="show output in kSU (1,000 SU)")
     parser.add_argument(
-        '-m', action='store_const', dest='unit',    const='m', help="show output in MSU (1,000,000 SU)")
+        '-m', action='store_const', dest='unit', const='m', help="show output in MSU (1,000,000 SU)")
+    parser.add_argument(
+        '-t', '--table', action='store_const', dest='pformat', const='table', help="print output as table")
     parser.add_argument(
         '-v', '--verbose', action='count', help="verbose mode (multiple -v's increase verbosity)")
 
@@ -201,7 +255,7 @@ def main():
     if args.verbose:
         def verbose_print(*a, **k):
             if k.pop('level', 0) <= args.verbose:
-                print(*a, **k)
+                pprint(*a, **k)
     else:
         verbose_print = lambda *a, **k: None
 
@@ -214,6 +268,9 @@ def main():
     
     qos_list = query_qos()
     user_assocs = query_assocs(qos_list)
-    user_usage = query_usage(qos_list)
+    user_usage = query_usage(user_assocs)
 
-    print_user_balance(user, user_assocs, user_usage, args.unit)
+    if args.pformat == 'table':
+        print_user_balance_table(user, user_assocs, user_usage, args.unit)
+    else:
+        print_user_balance(user, user_assocs, user_usage, args.unit)
