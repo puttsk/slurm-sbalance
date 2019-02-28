@@ -216,7 +216,7 @@ def print_user_balance(user, user_account, user_usage, units=''):
             limits = user_account[assoc]['grptresmins']['billing'] / su_factor
             
             if user_usage.get(assoc, None):
-                usage = user_usage[assoc]['billing'] / su_factor
+                usage = math.ceil(user_usage[assoc]['billing']) / su_factor
             else:
                 usage = 0
             
