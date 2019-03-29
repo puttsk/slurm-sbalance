@@ -9,6 +9,7 @@ import subprocess
 import argparse
 import math
 import csv
+import json
 
 from pprint import pprint
 from collections import OrderedDict
@@ -142,6 +143,53 @@ def query_usage(assoc_list=None, verbose=0):
 
     return usage_info
 
+def print_user_balance_json(user, user_account, user_usage, units='', col_width=15):
+    if units == 'k':
+        su_units = 'kSU'
+        su_factor = 1.0e3
+    elif units == 'm':
+        su_units = 'MSU'
+        su_factor = 1.0e6
+    else:
+        su_units = 'SU'
+        su_factor = 1
+
+    output = []
+
+    for assoc in user_account:
+        account = assoc[0]
+        qos = assoc[1]
+
+        balance = None
+        limits = None
+        usage = None    
+
+        if user_account[assoc].get('grptresmins', None):
+            limits = user_account[assoc]['grptresmins']['billing'] / su_factor
+            
+            if user_usage.get(assoc, None):
+                usage = math.ceil(user_usage[assoc]['billing']) / su_factor
+            else:
+                usage = 0
+            
+            balance = limits - usage
+            balance_percent = balance * 100.0 / limits
+
+        account = {
+            'account': account,
+            'qos': qos,
+            'description': user_account[assoc].get('description', ''),
+            'unit': su_units,
+            'allocation': limits if limits != None else 'unlimited',
+            'remaining': balance if balance != None else '',
+            'remaining_percent': balance_percent if balance != None else '',
+            'used': usage if usage != None else ''
+        }
+
+        output.append(account)
+    
+    print(json.dumps(output, indent=4, sort_keys=True))
+
 def print_user_balance_table(user, user_account, user_usage, units='', col_width=15):
     if units == 'k':
         su_units = 'kSU'
@@ -245,6 +293,8 @@ def parse_args():
     parser.add_argument(
         '-t', '--table', action='store_const', dest='pformat', const='table', help="print output as table")
     parser.add_argument(
+        '-j', '--json', action='store_const', dest='pformat', const='json', help="print output as json")
+    parser.add_argument(
         '-v', '--verbose', action='count', help="verbose mode (multiple -v's increase verbosity)")
 
     return parser.parse_args()
@@ -272,5 +322,7 @@ def main():
 
     if args.pformat == 'table':
         print_user_balance_table(user, user_assocs, user_usage, args.unit)
+    elif args.pformat == 'json':
+        print_user_balance_json(user, user_assocs, user_usage, args.unit)
     else:
         print_user_balance(user, user_assocs, user_usage, args.unit)
