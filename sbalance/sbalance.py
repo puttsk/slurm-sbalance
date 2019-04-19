@@ -143,7 +143,7 @@ def query_usage(assoc_list=None, verbose=0):
 
     return usage_info
 
-def print_user_balance_json(user, user_account, user_usage, units='', col_width=15):
+def print_user_balance_json(user, user_account, user_usage, units='', col_width=15, ignore_root=False):
     if units == 'k':
         su_units = 'kSU'
         su_factor = 1.0e3
@@ -157,8 +157,12 @@ def print_user_balance_json(user, user_account, user_usage, units='', col_width=
     output = []
 
     for assoc in user_account:
+        
         account = assoc[0]
         qos = assoc[1]
+
+        if ignore_root and account == 'root':
+            continue
 
         balance = None
         limits = None
@@ -291,6 +295,8 @@ def parse_args():
     parser.add_argument(
         '-m', action='store_const', dest='unit', const='m', help="show output in MSU (1,000,000 SU)")
     parser.add_argument(
+        '--ignore-root', action='store_true', help="ignore root account")
+    parser.add_argument(
         '-t', '--table', action='store_const', dest='pformat', const='table', help="print output as table")
     parser.add_argument(
         '-j', '--json', action='store_const', dest='pformat', const='json', help="print output as json")
@@ -323,6 +329,6 @@ def main():
     if args.pformat == 'table':
         print_user_balance_table(user, user_assocs, user_usage, args.unit)
     elif args.pformat == 'json':
-        print_user_balance_json(user, user_assocs, user_usage, args.unit)
+        print_user_balance_json(user, user_assocs, user_usage, args.unit, ignore_root=args.ignore_root)
     else:
         print_user_balance(user, user_assocs, user_usage, args.unit)
