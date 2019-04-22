@@ -10,6 +10,7 @@ import argparse
 import math
 import csv
 import json
+import sys
 
 from pprint import pprint
 from collections import OrderedDict
@@ -192,8 +193,20 @@ def generate_user_balances(user, user_account, user_usage, units='', ignore_root
 
         yield(account)
 
-def print_user_balance_json(user, user_account, user_usage, units='', ignore_root=False):    
-    print(json.dumps(list(generate_user_balances(user, user_account, user_usage, units, ignore_root)), indent=4, sort_keys=True))
+def print_user_balance_csv(user, user_account, user_usage, units='', col_width=15, ignore_root=False, delimiter=','):
+
+    table_format = "{:<{col_width}s} {:<{col_width}s} {:{col_width}s} {:>{col_width}s} {:>{col_width}s} {:>{col_width}s} {:>{col_width}s}".replace('{col_width}', str(col_width))
+
+    print(delimiter.join(['Account', 'QoS', 'Description', 'Allocation({})'.format(units+'SU'), 'Remaining({})'.format(units+'SU'), 'Remaining(%)', 'Used({})'.format(units+'SU')])) 
+    for bal in generate_user_balances(user, user_account, user_usage, units, ignore_root):
+        print(delimiter.join([bal['account'],
+                              bal['qos'], 
+                              bal['description'], 
+                              str(bal['allocation']),
+                              str(bal['remaining']), 
+                              str(bal['remaining_percent']), 
+                              str(bal['used'])
+                             ]))
 
 def print_user_balance_table(user, user_account, user_usage, units='', col_width=15, ignore_root=False):
 
@@ -215,6 +228,7 @@ def print_user_balance_table(user, user_account, user_usage, units='', col_width
                                   ))
     print()
 
+
 def print_user_balance(user, user_account, user_usage, units=''):
 
     print("Account balances for user: %s" % user)
@@ -225,7 +239,7 @@ def print_user_balance(user, user_account, user_usage, units=''):
         else:
             print('Account: {}'.format(bal['account']))
             print('QoS: {}'.format(bal['qos']))
-
+            
         if bal['allocation'] != 'unlimited':
             print("\t{:20} {:>18s}".format("Description:", bal['description']))    
             print("\t{:20} {:15.2f} {}".format("Allocation:", bal['allocation'], units+'SU'))
@@ -247,6 +261,8 @@ def parse_args():
         '-m', action='store_const', dest='unit', const='m', help="show output in MSU (1,000,000 SU)")
     parser.add_argument(
         '--ignore-root', action='store_true', help="ignore root account")
+    parser.add_argument(
+        '-c', '--csv', action='store_const', dest='pformat', const='csv', help="print output as csv")
     parser.add_argument(
         '-t', '--table', action='store_const', dest='pformat', const='table', help="print output as table")
     parser.add_argument(
@@ -279,7 +295,9 @@ def main():
 
     if args.pformat == 'table':
         print_user_balance_table(user, user_assocs, user_usage, args.unit)
+    elif args.pformat == 'csv':
+        print_user_balance_csv(user, user_assocs, user_usage, args.unit, ignore_root=args.ignore_root)
     elif args.pformat == 'json':
-        print_user_balance_json(user, user_assocs, user_usage, args.unit, ignore_root=args.ignore_root)
+        print(json.dumps(list(generate_user_balances(user, user_assocs, user_usage, args.unit, args.ignore_root)), indent=4, sort_keys=True))
     else:
         print_user_balance(user, user_assocs, user_usage, args.unit)
