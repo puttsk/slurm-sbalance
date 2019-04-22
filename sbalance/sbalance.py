@@ -25,8 +25,8 @@ SACCT_BEGIN_DATE = '01/01/19'
 SACCT_USAGE_FIELDS = ('jobid', 'user', 'account','qos','state','alloctres','elapsedraw','partition')
 SACCT_USAGE_STATES = ('CD',     # COMPLETED
                       'F',      # FAILED
-                      'TO',      # TIMEOUT
-                      'CA'
+                      'TO',     # TIMEOUT
+                      'CA'      # CANCEL
 )
 
 SACCTMGR_COMMAND = 'sacctmgr'
