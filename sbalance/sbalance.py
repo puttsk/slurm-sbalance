@@ -143,7 +143,7 @@ def query_usage(assoc_list=None, verbose=0):
 
     return usage_info
 
-def print_user_balance_json(user, user_account, user_usage, units='', col_width=15, ignore_root=False):
+def generate_user_balances(user, user_account, user_usage, units='', ignore_root=False):
     if units == 'k':
         su_units = 'kSU'
         su_factor = 1.0e3
@@ -174,7 +174,7 @@ def print_user_balance_json(user, user_account, user_usage, units='', col_width=
             if user_usage.get(assoc, None):
                 usage = math.ceil(user_usage[assoc]['billing']) / su_factor
             else:
-                usage = 0
+                usage = 0.0
             
             balance = limits - usage
             balance_percent = balance * 100.0 / limits
@@ -190,96 +190,47 @@ def print_user_balance_json(user, user_account, user_usage, units='', col_width=
             'used': usage if usage != None else ''
         }
 
-        output.append(account)
-    
-    print(json.dumps(output, indent=4, sort_keys=True))
+        yield(account)
 
-def print_user_balance_table(user, user_account, user_usage, units='', col_width=15):
-    if units == 'k':
-        su_units = 'kSU'
-        su_factor = 1.0e3
-    elif units == 'm':
-        su_units = 'MSU'
-        su_factor = 1.0e6
-    else:
-        su_units = 'SU'
-        su_factor = 1
+def print_user_balance_json(user, user_account, user_usage, units='', ignore_root=False):    
+    print(json.dumps(list(generate_user_balances(user, user_account, user_usage, units, ignore_root)), indent=4, sort_keys=True))
+
+def print_user_balance_table(user, user_account, user_usage, units='', col_width=15, ignore_root=False):
 
     table_format = "{:<{col_width}s} {:<{col_width}s} {:{col_width}s} {:>{col_width}s} {:>{col_width}s} {:>{col_width}s} {:>{col_width}s}".replace('{col_width}', str(col_width))
 
     print("Account balances for user: %s" % user)
     print()
-    print(table_format.format('Account', 'QoS', 'Description', 'Allocation({})'.format(su_units), 'Remaining({})'.format(su_units), 'Remaining(%)', 'Used({})'.format(su_units), col_width=col_width)) 
+    print(table_format.format('Account', 'QoS', 'Description', 'Allocation({})'.format(units+'SU'), 'Remaining({})'.format(units+'SU'), 'Remaining(%)', 'Used({})'.format(units+'SU'), col_width=col_width)) 
     print(('-'*col_width + ' ') * 7 )
     
-    for assoc in user_account:
-        account = assoc[0]
-        qos = assoc[1]
-
-        balance = None
-        limits = None
-        usage = None    
-
-        if user_account[assoc].get('grptresmins', None):
-            limits = user_account[assoc]['grptresmins']['billing'] / su_factor
-            
-            if user_usage.get(assoc, None):
-                usage = math.ceil(user_usage[assoc]['billing']) / su_factor
-            else:
-                usage = 0
-            
-            balance = limits - usage
-            balance_percent = balance * 100.0 / limits
-
-        
-        print(table_format.format(account,
-                                  qos, 
-                                  user_account[assoc].get('description', ''), 
-                                  "{:{col_width}.2f}".format(limits, col_width=col_width) if limits != None else 'unlimited', 
-                                  "{:{col_width}.2f}".format(balance, col_width=col_width) if balance != None else '', 
-                                  "{:{col_width}.2f}".format(balance_percent, col_width=col_width) if balance != None else '', 
-                                  "{:{col_width}.2f}".format(usage, col_width=col_width) if usage != None else '', 
+    for bal in generate_user_balances(user, user_account, user_usage, units, ignore_root):
+        print(table_format.format(bal['account'],
+                                  bal['qos'], 
+                                  bal['description'], 
+                                  "{:{col_width}.2f}".format(bal['allocation'], col_width=col_width) if isinstance(bal['allocation'], float) else str(bal['allocation']),
+                                  "{:{col_width}.2f}".format(bal['remaining'], col_width=col_width) if isinstance(bal['remaining'], float) else str(bal['remaining']), 
+                                  "{:{col_width}.2f}".format(bal['remaining_percent'], col_width=col_width) if isinstance(bal['remaining_percent'], float) else str(bal['remaining_percent']), 
+                                  "{:{col_width}.2f}".format(bal['used'], col_width=col_width) if isinstance(bal['used'], float) else str(bal['used'])
                                   ))
     print()
 
 def print_user_balance(user, user_account, user_usage, units=''):
-    if units == 'k':
-        su_units = 'kSU'
-        su_factor = 1.0e3
-    elif units == 'm':
-        su_units = 'MSU'
-        su_factor = 1.0e6
-    else:
-        su_units = 'SU'
-        su_factor = 1
 
     print("Account balances for user: %s" % user)
 
-    for assoc in user_account:
-        account = assoc[0]
-        qos = assoc[1]
-
-        if user_account[assoc]['default'] == None or user_account[assoc]['default']:
-            print(account + ": " )
+    for bal in generate_user_balances(user, user_account, user_usage, units):
+        if bal['account'] == bal['qos']:
+            print('Account: {}'.format(bal['account']))
         else:
-            print(account + ":" + qos + ": " )
+            print('Account: {}'.format(bal['account']))
+            print('QoS: {}'.format(bal['qos']))
 
-        if user_account[assoc].get('grptresmins', None):
-            limits = user_account[assoc]['grptresmins']['billing'] / su_factor
-            
-            if user_usage.get(assoc, None):
-                usage = math.ceil(user_usage[assoc]['billing']) / su_factor
-            else:
-                usage = 0
-            
-            balance = limits - usage
-            balance_percent = balance * 100.0 / limits
-
-            if user_account[assoc].get('description', None):
-                print("\t{:20} {:>18s}".format("Description:", user_account[assoc]['description']))    
-            print("\t{:20} {:15.2f} {}".format("Allocation:", limits, su_units))
-            print("\t{:20} {:15.2f} {} ({:6.2f}%)".format("Remaining Balance:", balance, su_units, balance_percent))
-            print("\t{:20} {:15.2f} {}".format("Used:", usage, su_units))
+        if bal['allocation'] != 'unlimited':
+            print("\t{:20} {:>18s}".format("Description:", bal['description']))    
+            print("\t{:20} {:15.2f} {}".format("Allocation:", bal['allocation'], units+'SU'))
+            print("\t{:20} {:15.2f} {} ({:6.2f}%)".format("Remaining Balance:", bal['remaining'], units+'SU', bal['remaining_percent']))
+            print("\t{:20} {:15.2f} {}".format("Used:", bal['used'], units+'SU'))
         else:
             print("\t{:20} {:>18}".format("Allocation:", "unlimited"))
 
@@ -291,7 +242,7 @@ def parse_args():
     parser.add_argument(
         '-V', '--version', action='version', version=version)
     parser.add_argument(
-        '-k', action='store_const', dest='unit', const='k', help="show output in kSU (1,000 SU)")
+        '-k', action='store_const', dest='unit', default='', const='k', help="show output in kSU (1,000 SU)")
     parser.add_argument(
         '-m', action='store_const', dest='unit', const='m', help="show output in MSU (1,000,000 SU)")
     parser.add_argument(
