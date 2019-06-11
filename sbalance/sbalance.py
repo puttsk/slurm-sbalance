@@ -15,14 +15,13 @@ import sys
 from pprint import pprint
 from collections import OrderedDict
 
-from .config import __version__, __author__, __license__
+from .config import __version__, __author__, __license__, SACCT_BEGIN_DATE
 
 Verbosity = type('Verbosity', (), {'INFO':1, 'WARNING':2, 'DEBUG':5})
 
 DEBUG = False
 
 SACCT_COMMAND = 'sacct'
-SACCT_BEGIN_DATE = '01/01/19'
 SACCT_USAGE_FIELDS = ('jobid', 'user', 'account','qos','state','alloctres','elapsedraw','partition')
 SACCT_USAGE_STATES = ('CD',     # COMPLETED
                       'F',      # FAILED
