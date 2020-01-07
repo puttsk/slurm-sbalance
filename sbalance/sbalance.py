@@ -95,13 +95,13 @@ def query_assocs(qos_info, user_list=None, verbose=0):
 
     return assoc_info
 
-def query_usage(assoc_list=None, verbose=0):
+def query_usage(assoc_list=None, verbose=0, start=SACCT_BEGIN_DATE):
     usage_info = {}
     usage_cmd = [SACCT_COMMAND,
                  '-aPX', '--noheader', '--noconvert',
                  '--format=' + ','.join(SACCT_USAGE_FIELDS),
                  #'--state=' + ','.join(SACCT_USAGE_STATES),    # Looking for completed, failed, and timed out jobs.
-                 '--start=' + SACCT_BEGIN_DATE                 # Start from the begining of service 
+                 '--start=' + start                             # Start from the begining of service 
     ]
     if assoc_list:
         usage_cmd.append('-q')
@@ -267,6 +267,8 @@ def parse_args():
     parser.add_argument(
         '-j', '--json', action='store_const', dest='pformat', const='json', help="print output as json")
     parser.add_argument(
+        '--start', action='store', default=SACCT_BEGIN_DATE, help="starting date")
+    parser.add_argument(
         '-v', '--verbose', action='count', help="verbose mode (multiple -v's increase verbosity)")
 
     return parser.parse_args()
@@ -290,7 +292,7 @@ def main():
     
     qos_list = query_qos()
     user_assocs = query_assocs(qos_list)
-    user_usage = query_usage(user_assocs)
+    user_usage = query_usage(user_assocs, start=args.start)
 
     if args.pformat == 'table':
         print_user_balance_table(user, user_assocs, user_usage, args.unit)
