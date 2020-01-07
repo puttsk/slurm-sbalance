@@ -147,7 +147,7 @@ def generate_user_balances(user, user_account, user_usage, units='', ignore_root
     if units == 'k':
         su_units = 'kSU'
         su_factor = 1.0e3
-    elif units == 'm':
+    elif units == 'M':
         su_units = 'MSU'
         su_factor = 1.0e6
     else:
@@ -257,7 +257,7 @@ def parse_args():
     parser.add_argument(
         '-k', action='store_const', dest='unit', default='', const='k', help="show output in kSU (1,000 SU)")
     parser.add_argument(
-        '-m', action='store_const', dest='unit', const='m', help="show output in MSU (1,000,000 SU)")
+        '-m', action='store_const', dest='unit', const='M', help="show output in MSU (1,000,000 SU)")
     parser.add_argument(
         '--ignore-root', action='store_true', help="ignore root account")
     parser.add_argument(
