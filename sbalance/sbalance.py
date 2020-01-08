@@ -12,8 +12,10 @@ import csv
 import json
 import sys
 
-from pprint import pprint
-from collections import OrderedDict
+from io import StringIO
+
+import numpy as np
+import pandas as pd
 
 from .config import __version__, __author__, __license__, SACCT_BEGIN_DATE
 
@@ -227,7 +229,6 @@ def print_user_balance_table(user, user_account, user_usage, units='', col_width
                                   ))
     print()
 
-
 def print_user_balance(user, user_account, user_usage, units=''):
 
     print("Account balances for user: %s" % user)
@@ -259,7 +260,7 @@ def parse_args():
     parser.add_argument(
         '-m', action='store_const', dest='unit', const='M', help="show output in MSU (1,000,000 SU)")
     parser.add_argument(
-        '--ignore-root', action='store_true', help="ignore root account")
+        '-d','--detail', action='store_true', help="display SU usage per users")
     parser.add_argument(
         '-c', '--csv', action='store_const', dest='pformat', const='csv', help="print output as csv")
     parser.add_argument(
@@ -285,20 +286,97 @@ def main():
 
     global __verbose_print
     __verbose_print = verbose_print
-
     __verbose_print(args, level=Verbosity.DEBUG)
+
+    if args.unit == 'k':
+        su_units = 'kSU'
+        su_factor = 1.0e-3
+    elif args.unit == 'M':
+        su_units = 'MSU'
+        su_factor = 1.0e-6
+    else:
+        su_units = 'SU'
+        su_factor = 1
 
     user = getpass.getuser()
     
-    qos_list = query_qos()
-    user_assocs = query_assocs(qos_list)
-    user_usage = query_usage(user_assocs, start=args.start)
+    qos_cmd = [SACCTMGR_COMMAND,'show', 'qos','-P',
+               'format=' + ','.join(SACCTMGR_QOS_FIELDS)
+    ]
+    qos_output_raw = subprocess.check_output(qos_cmd).decode('utf-8')
+    qos = pd.read_csv(StringIO(qos_output_raw), sep='|')
+    qos['GrpTRESMins'] = qos['GrpTRESMins'].apply(lambda tres: {k:int(v) for k,v in (x.split('=') for x in tres.strip().split(','))} if not pd.isnull(tres) else tres)
+    qos['Allocation'] = qos['GrpTRESMins'].apply(lambda x: x['billing'] if not pd.isnull(x) else 'unlimited')
+    
+    # Remove non-accountable QoS
+    qos = qos.loc[qos['Flags'] == 'NoDecay']
 
-    if args.pformat == 'table':
-        print_user_balance_table(user, user_assocs, user_usage, args.unit)
-    elif args.pformat == 'csv':
-        print_user_balance_csv(user, user_assocs, user_usage, args.unit, ignore_root=args.ignore_root)
-    elif args.pformat == 'json':
-        print(json.dumps(list(generate_user_balances(user, user_assocs, user_usage, args.unit, args.ignore_root)), indent=4, sort_keys=True))
+    assoc_cmd = [SACCTMGR_COMMAND,
+                   'show', 'assoc','-P',
+                   'format=' + ','.join(SACCTMGR_ASSOC_FIELDS)
+    ]
+    # Assume user only have one QoS
+    assoc_output_raw = subprocess.check_output(assoc_cmd).decode('utf-8')
+    assoc = pd.read_csv(StringIO(assoc_output_raw), sep='|')
+    valid_account = assoc.loc[assoc['User'].notnull()]['QOS'].unique()
+
+    usage_cmd = [SACCT_COMMAND,
+                 '-aPX', '--noconvert',
+                 '--format=' + ','.join(SACCT_USAGE_FIELDS),
+                 '--start=' + args.start                             # Start from the begining of service 
+    ]
+    usage_cmd.append('-q')
+    usage_cmd.append(','.join(valid_account))
+
+    usage_output_raw = subprocess.check_output(usage_cmd).decode('utf-8')
+    usage = pd.read_csv(StringIO(usage_output_raw), sep='|')
+    usage['AllocTRES'] = usage['AllocTRES'].apply(lambda tres: {k:int(v.replace('M','')) for k,v in (x.split('=') for x in tres.strip().split(','))} if not pd.isnull(tres) else tres)
+    usage['ElapsedRaw'] = usage['ElapsedRaw'].apply(lambda x: x / 60.0 if not pd.isnull(x) else x)
+    usage['Billing'] = usage.apply(lambda r: r['AllocTRES'].get(u'billing', 0) * r['ElapsedRaw'] if not pd.isnull(r['AllocTRES']) else 0, axis=1)
+    
+    account_usage = usage.groupby(['Account'], as_index=False).agg({'Billing':'sum'})
+    
+    if args.detail:
+        account_usage = usage.groupby(['Account', 'User'], as_index=False).agg({'Billing':'sum'})
+        
+    qos = qos.rename(columns={'Name': 'Account'})
+
+    result = pd.merge(qos, account_usage, on='Account', how='outer', sort=True)
+    result = result.drop(columns=['GrpTRESMins', 'Flags'])
+    result = result.rename(columns={'Billing': 'Used', 'Descr': 'Description'})
+    
+    if args.detail:
+        result['User'] = result['User'].fillna('')
+
+    result['Used'.format(su_units)] = result['Used'].apply(lambda x: 0 if pd.isnull(x) else int(math.ceil(x)))
+    result['Used({})'.format(su_units)] = result['Used'].apply(lambda x: 0 if pd.isnull(x) else int(math.ceil(x)) * su_factor)
+    result['Allocation({})'.format(su_units)] = result['Allocation'].apply(lambda x: 0 if pd.isnull(x) else x * su_factor)
+    result['Remaining'] = result.apply(lambda r: (r['Allocation'] - r['Used']) if not type(r['Allocation']) is str else '' ,axis=1)
+    result['Remaining({})'.format(su_units)] = result['Remaining'].apply(lambda x: 0 if pd.isnull(x) else x * su_factor)
+    result['Remaining(%)'] = result.apply(lambda r: float(r['Remaining'])/r['Allocation']*100.0 if not type(r['Allocation']) is str else '' ,axis=1)
+    result = result.loc[result['Account'].isin(valid_account)]
+
+    pd.set_option('display.max_rows', None)
+    pd.options.display.float_format = '{:.2f}'.format
+    
+    print()
+    if args.detail:
+        result['Used(%)'] = result.apply(lambda r: float(r['Used'])/r['Allocation']*100  if not type(r['Allocation']) is str else '' ,axis=1)
+        table = pd.pivot_table(result, values=['Used({})'.format(su_units), 'Used(%)'], index=['Account', 'User'])
+
+        lines = table.to_string(col_space=12, formatters={'Used(%)':'{:.2f}'.format}).split('\n')
+        lines.insert(2, '-'*len(lines[0]))
+        print('\n'.join(lines))
     else:
-        print_user_balance(user, user_assocs, user_usage, args.unit)
+        lines = result.to_string(index=False, columns=['Account', 'Description', 'Allocation({})'.format(su_units), 'Remaining({})'.format(su_units), 'Remaining(%)', 'Used({})'.format(su_units)], col_space=12).split('\n')
+        lines.insert(1, '-'*len(lines[0]))
+        print('\n'.join(lines))
+
+    #if args.pformat == 'table':
+    #    print_user_balance_table(user, user_assocs, user_usage, args.unit)
+    #elif args.pformat == 'csv':
+    #    print_user_balance_csv(user, user_assocs, user_usage, args.unit, ignore_root=args.ignore_root)
+    #elif args.pformat == 'json':
+    #    print(json.dumps(list(generate_user_balances(user, user_assocs, user_usage, args.unit, args.ignore_root)), indent=4, sort_keys=True))
+    #else:
+    #    print_user_balance(user, user_assocs, user_usage, args.unit)
