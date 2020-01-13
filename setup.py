@@ -40,7 +40,9 @@ setup(
             'sbalance=sbalance:main',
         ],
     },
-
+    install_requires=[
+        'pandas>=0.24',
+    ],
     project_urls={ 
         'Bug Reports': 'https://github.com/puttsk/slurm-sbalance/issues',
         'Source': 'https://github.com/puttsk/slurm-sbalance/',
