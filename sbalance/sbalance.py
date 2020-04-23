@@ -128,8 +128,8 @@ def main():
     usage_cmd.append(','.join(valid_account))
 
     usage_output_raw = subprocess.check_output(usage_cmd).decode('utf-8')
-    usage = pd.read_csv(StringIO(usage_output_raw), sep='|')
-    usage['AllocTRES'] = usage['AllocTRES'].apply(lambda tres: {k:int(v.replace('M','')) for k,v in (x.split('=') for x in tres.strip().split(','))} if not pd.isnull(tres) else tres)
+    usage = pd.read_csv(StringIO(usage_output_raw), sep='|', dtype={'JobID':str, 'User': str, 'Account': str, 'QOS': str, 'State': str, 'AllocTRES': str, 'ElapsedRaw': int, 'Partition': str})
+    usage['AllocTRES'] = usage['AllocTRES'].apply(lambda tres: {k:int(v.replace('M','')) for k,v in (x.split('=') for x in tres.strip().split(','))} if not pd.isnull(tres) else {})
     usage['ElapsedRaw'] = usage['ElapsedRaw'].apply(lambda x: x / 60.0 if not pd.isnull(x) else x)
     usage['Billing'] = usage.apply(lambda r: r['AllocTRES'].get(u'billing', 0) * r['ElapsedRaw'] if not pd.isnull(r['AllocTRES']) else 0, axis=1)
     
