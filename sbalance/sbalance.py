@@ -97,7 +97,7 @@ def main():
         su_factor = 1
 
     user = getpass.getuser()
-    
+ 
     qos_cmd = [SACCTMGR_COMMAND,'show', 'qos','-P',
                'format=' + ','.join(SACCTMGR_QOS_FIELDS)
     ]
@@ -113,7 +113,8 @@ def main():
                    'show', 'assoc','-P',
                    'format=' + ','.join(SACCTMGR_ASSOC_FIELDS)
     ]
-    # Assume user only have one QoS
+
+    # Collect user's slurm accounts
     assoc_output_raw = subprocess.check_output(assoc_cmd).decode('utf-8')
     assoc = pd.read_csv(StringIO(assoc_output_raw), sep='|')
     valid_account = assoc.loc[assoc['User'].notnull()]['QOS'].unique()
@@ -127,12 +128,17 @@ def main():
     usage_cmd.append('-q')
     usage_cmd.append(','.join(valid_account))
 
+    # Read usage data from sacct command
     usage_output_raw = subprocess.check_output(usage_cmd).decode('utf-8')
     usage = pd.read_csv(StringIO(usage_output_raw), sep='|', dtype={'JobID':str, 'User': str, 'Account': str, 'QOS': str, 'State': str, 'AllocTRES': str, 'ElapsedRaw': int, 'Partition': str})
+
+    # If there is no usage data, add a dataframe record for each account with 0 usage
+    if usage.empty:
+        usage = usage.append({'ElapsedRaw': 0, 'User': user}, ignore_index=True)               
+
     usage['AllocTRES'] = usage['AllocTRES'].apply(lambda tres: {k:int(v.replace('M','')) for k,v in (x.split('=') for x in tres.strip().split(','))} if not pd.isnull(tres) else {})
     usage['ElapsedRaw'] = usage['ElapsedRaw'].apply(lambda x: x / 60.0 if not pd.isnull(x) else x)
     usage['Billing'] = usage.apply(lambda r: r['AllocTRES'].get(u'billing', 0) * r['ElapsedRaw'] if not pd.isnull(r['AllocTRES']) else 0, axis=1)
-    
     account_usage = usage.groupby(['Account'], as_index=False).agg({'Billing':'sum'})
     
     if args.detail:
